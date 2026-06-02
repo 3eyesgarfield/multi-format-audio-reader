@@ -1,0 +1,55 @@
+{
+  "name": "polyglot-reader",
+  "version": "0.1.0",
+  "description": "本地多格式有声阅读器 — PDF / Markdown / EPUB with Huihui + Kokoro + Edge TTS",
+  "main": "./out/main/index.js",
+  "author": "",
+  "license": "MIT",
+  "scripts": {
+    "dev": "electron-vite dev",
+    "build": "electron-vite build",
+    "preview": "electron-vite preview",
+    "start": "electron-vite preview",
+    "typecheck": "tsc --noEmit -p tsconfig.web.json && tsc --noEmit -p tsconfig.node.json",
+    "dist": "electron-vite build && electron-builder",
+    "dist:win": "electron-vite build && electron-builder --win",
+    "pack:dir": "electron-vite build && electron-builder --win --dir"
+  },
+  "dependencies": {
+    "epubjs": "^0.3.93",
+    "i18next": "^23.11.5",
+    "markdown-it": "^14.1.0",
+    "pdfjs-dist": "^4.4.168",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "react-i18next": "^14.1.2",
+    "zustand": "^4.5.4"
+  },
+  "devDependencies": {
+    "@types/markdown-it": "^14.1.1",
+    "@types/node": "^20.14.0",
+    "@types/react": "^18.3.3",
+    "@types/react-dom": "^18.3.0",
+    "@vitejs/plugin-react": "^4.3.1",
+    "electron": "^31.2.0",
+    "electron-builder": "^24.13.3",
+    "electron-vite": "^2.3.0",
+    "typescript": "^5.5.3",
+    "vite": "^5.3.3"
+  },
+  "build": {
+    "appId": "com.polyglot.reader",
+    "productName": "Polyglot Reader",
+    "files": ["out/**/*"],
+    "extraResources": [
+      {
+        "from": "backend",
+        "to": "backend",
+        "filter": ["**/*", "!**/__pycache__/**", "!**/*.pyc"]
+      },
+      { "from": "resources/dict", "to": "dict", "filter": ["**/*", "!*.md"] }
+    ],
+    "asar": true,
+    "win": { "target": ["nsis"] }
+  }
+}

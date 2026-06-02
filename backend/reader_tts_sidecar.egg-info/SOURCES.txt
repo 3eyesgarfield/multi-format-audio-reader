@@ -1,0 +1,11 @@
+pyproject.toml
+engines/__init__.py
+engines/base.py
+engines/edge_engine.py
+engines/kokoro_engine.py
+engines/sapi_huihui.py
+reader_tts_sidecar.egg-info/PKG-INFO
+reader_tts_sidecar.egg-info/SOURCES.txt
+reader_tts_sidecar.egg-info/dependency_links.txt
+reader_tts_sidecar.egg-info/requires.txt
+reader_tts_sidecar.egg-info/top_level.txt

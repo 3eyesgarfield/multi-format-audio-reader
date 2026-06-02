@@ -1,0 +1,19 @@
+Metadata-Version: 2.4
+Name: reader-tts-sidecar
+Version: 0.1.0
+Summary: Local TTS / OCR / audiobook-export sidecar for the multi-format reader
+Requires-Python: >=3.10
+Requires-Dist: fastapi>=0.110
+Requires-Dist: uvicorn>=0.29
+Requires-Dist: pywin32>=306; sys_platform == "win32"
+Requires-Dist: edge-tts>=6.1
+Requires-Dist: numpy>=1.26
+Requires-Dist: soundfile>=0.12
+Requires-Dist: pydub>=0.25
+Requires-Dist: imageio-ffmpeg>=0.5
+Provides-Extra: kokoro
+Requires-Dist: kokoro>=0.9; extra == "kokoro"
+Requires-Dist: misaki[zh]>=0.9; extra == "kokoro"
+Provides-Extra: ocr
+Requires-Dist: rapidocr-onnxruntime>=1.3; extra == "ocr"
+Requires-Dist: pillow>=10.0; extra == "ocr"

@@ -1,0 +1,35 @@
+[project]
+name = "reader-tts-sidecar"
+version = "0.1.0"
+description = "Local TTS / OCR / audiobook-export sidecar for the multi-format reader"
+requires-python = ">=3.10"
+
+# Core deps — light, always installed. The app is fully usable (SAPI + Edge TTS,
+# audiobook export) with just these.
+dependencies = [
+    "fastapi>=0.110",
+    "uvicorn>=0.29",
+    "pywin32>=306; sys_platform == 'win32'",
+    "edge-tts>=6.1",
+    "numpy>=1.26",
+    "soundfile>=0.12",
+    "pydub>=0.25",
+    "imageio-ffmpeg>=0.5",
+]
+
+[project.optional-dependencies]
+# Local neural TTS (heavy). torch must be installed separately with the cu128
+# index for Blackwell GPUs:
+#   uv pip install torch --index-url https://download.pytorch.org/whl/cu128
+kokoro = [
+    "kokoro>=0.9",
+    "misaki[zh]>=0.9",
+]
+# Scanned-PDF OCR (zh+en, ONNX runtime).
+ocr = [
+    "rapidocr-onnxruntime>=1.3",
+    "pillow>=10.0",
+]
+
+[tool.uv]
+package = false

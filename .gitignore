@@ -1,0 +1,14 @@
+node_modules/
+out/
+dist/
+backend/.venv/
+backend/**/__pycache__/
+# downloaded dictionary data (large; see resources/dict/README.md to obtain)
+resources/dict/*.u8
+resources/dict/*.csv
+# temp / generated
+*.log
+window.png
+win*.png
+screenshot.png
+*.tsbuildinfo
