@@ -565,6 +565,11 @@ input[type='text'],
   background: var(--hl);
   box-shadow: 0 0 0 2px var(--hl);
 }
+/* debug (Ctrl+Shift+L): reveal the text layer to check it lines up with glyphs */
+body.show-textlayer .pdf-textlayer span {
+  color: rgba(255, 0, 0, 0.6) !important;
+  background: rgba(255, 235, 0, 0.25);
+}
 
 /* epub — self-rendered as one continuous scroll (same pipeline as Markdown) */
 .epub-host {

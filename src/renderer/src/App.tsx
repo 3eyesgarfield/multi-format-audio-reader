@@ -184,6 +184,13 @@ export default function App(): JSX.Element {
   useEffect(() => {
     const onKey = (e: KeyboardEvent): void => {
       if ((e.target as HTMLElement)?.tagName === 'INPUT') return
+      // debug: Ctrl+Shift+L paints the (normally transparent) PDF text layer red
+      // so you can see whether it lines up with the printed glyphs
+      if (e.ctrlKey && e.shiftKey && e.code === 'KeyL') {
+        e.preventDefault()
+        document.body.classList.toggle('show-textlayer')
+        return
+      }
       const p = playerRef.current
       if (!p) return
       if (e.code === 'Space') {
@@ -296,15 +303,27 @@ export default function App(): JSX.Element {
   }
 
   function wordAtPoint(x: number, y: number): { word: string; lang: 'en' | 'zh' } | null {
-    // PDF text layer: the spans carry a `transform: scaleX(...)`, which makes
-    // caretRangeFromPoint mis-hit characters (the error grows with zoom). Use the
-    // span's transform-aware bounding box + proportional mapping instead.
+    // PDF text layer: use the span that's visually ON TOP at the point (what the
+    // user actually clicks). pdf.js runs can overlap their right neighbour (e.g. a
+    // trailing space widens the box), so scanning spans in DOM order would wrongly
+    // pick the earlier/left run — elementFromPoint gives the topmost one instead.
+    // Then locate the exact character via per-char client rects (transform-aware).
     const elAt = document.elementFromPoint(x, y) as HTMLElement | null
     const span = elAt?.closest('.pdf-textlayer span') as HTMLElement | null
-    if (span && span.textContent) {
-      const text = span.textContent
-      const rect = span.getBoundingClientRect()
-      const frac = rect.width > 0 ? (x - rect.left) / rect.width : 0
+    if (span) {
+      const tn = span.firstChild
+      const text = tn && tn.nodeType === 3 ? (tn as Text).data : span.textContent || ''
+      if (tn && tn.nodeType === 3) {
+        const range = document.createRange()
+        for (let i = 0; i < text.length; i++) {
+          range.setStart(tn, i)
+          range.setEnd(tn, i + 1)
+          const cr = range.getBoundingClientRect()
+          if (x >= cr.left && x <= cr.right) return wordFromText(text, i)
+        }
+      }
+      const r = span.getBoundingClientRect()
+      const frac = r.width > 0 ? (x - r.left) / r.width : 0
       const off = Math.max(0, Math.min(text.length - 1, Math.round(frac * text.length)))
       return wordFromText(text, off)
     }

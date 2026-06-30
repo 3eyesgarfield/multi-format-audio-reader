@@ -23,12 +23,19 @@ interface PageItem {
   end: number
   transform: number[]
   width: number
+  fontName?: string
   sentId?: string
 }
 
 interface PageData {
   sentences: Sentence[]
   items: PageItem[]
+  // fontName -> CSS font-family that pdf.js registered for the embedded font;
+  // rendering the text layer in the REAL font (not sans-serif) is what makes the
+  // transparent glyph boxes line up with the canvas, so hover/click lands on the
+  // right word instead of drifting toward the middle of long lines.
+  styles?: Record<string, { fontFamily?: string; ascent?: number }>
+  tc?: unknown // raw TextContent, fed to pdf.js's official TextLayer renderer
 }
 
 function pageOf(id: string): number {
@@ -142,7 +149,7 @@ export const PdfReader = forwardRef<ReaderHandle, Props>(function PdfReader(
       }
       const start = text.length
       text += str
-      items.push({ str, start, end: text.length, transform: tr, width: it.width })
+      items.push({ str, start, end: text.length, transform: tr, width: it.width, fontName: (it as { fontName?: string }).fontName })
       prevY = y
       prevSize = size
     }
@@ -151,7 +158,12 @@ export const PdfReader = forwardRef<ReaderHandle, Props>(function PdfReader(
       const s = segs.find((sn) => item.start >= sn.start && item.start < sn.end)
       if (s) item.sentId = s.id
     }
-    const data: PageData = { sentences: segs, items }
+    const data: PageData = {
+      sentences: segs,
+      items,
+      styles: tc.styles as Record<string, { fontFamily?: string }>,
+      tc
+    }
     pageDataRef.current.set(p, data)
     return data
   }
@@ -224,33 +236,35 @@ export const PdfReader = forwardRef<ReaderHandle, Props>(function PdfReader(
       transform: [canvas.width / viewport.width, 0, 0, canvas.height / viewport.height, 0, 0]
     }).promise
 
-    // selectable / highlightable text layer
+    // selectable / highlightable text layer — rendered by pdf.js's OFFICIAL
+    // TextLayer so the transparent glyph boxes line up exactly with the canvas
+    // (a hand-rolled span + scaleX drifts across a line because PDF word spacing
+    // is positional, not the font's space width).
     const data = await ensurePageData(p)
     if (!data) return
     const layer = document.createElement('div')
     layer.className = 'pdf-textlayer'
-    for (const item of data.items) {
-      if (!item.str.trim()) continue
-      const t = pdfjsLib.Util.transform(viewport.transform, item.transform)
-      const fh = Math.hypot(t[2], t[3])
-      const span = document.createElement('span')
-      span.textContent = item.str
-      span.style.left = `${t[4]}px`
-      span.style.top = `${t[5] - fh}px`
-      span.style.fontSize = `${fh}px`
-      span.style.fontFamily = 'sans-serif'
-      if (item.sentId) {
+    layer.style.setProperty('--scale-factor', String(scale))
+    layer.style.setProperty('--total-scale-factor', String(scale))
+    host.appendChild(layer)
+    if (data.tc) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const TL = (pdfjsLib as unknown as { TextLayer: any }).TextLayer
+      const textLayer = new TL({ textContentSource: data.tc, container: layer, viewport })
+      await textLayer.render()
+      // pdf.js builds one div per text item in order, so they line up 1:1 with
+      // data.items — re-attach the sentence id (playback highlight) + read-on-dblclick
+      const divs: HTMLElement[] = textLayer.textDivs
+      for (let i = 0; i < divs.length; i++) {
+        const item = data.items[i]
+        const span = divs[i]
+        if (!item || !span || !item.sentId) continue
         span.dataset.id = mergeMapRef.current.get(item.sentId) ?? item.sentId
         span.addEventListener('dblclick', () => {
           if (span.dataset.id) onReadFrom(span.dataset.id)
         })
       }
-      layer.appendChild(span)
-      const targetW = item.width * scale
-      const natW = span.offsetWidth
-      if (natW > 0 && targetW > 0) span.style.transform = `scaleX(${targetW / natW})`
     }
-    host.appendChild(layer)
     if (hlRef.current.length) applyHighlights(containerRef.current, '.pdf-textlayer span', hlRef.current)
     if (activeRef.current && pageOf(activeRef.current) === p) applyActive(activeRef.current)
   }
@@ -349,7 +363,14 @@ export const PdfReader = forwardRef<ReaderHandle, Props>(function PdfReader(
       try {
         const buf = await window.api.readFile(book.path)
         if (cancelled) return
-        const doc = await pdfjsLib.getDocument({ data: new Uint8Array(buf) }).promise
+        const doc = await pdfjsLib.getDocument({
+          data: new Uint8Array(buf),
+          // load real font metrics for non-embedded standard fonts + CJK cmaps so
+          // the text layer aligns with the canvas glyphs (served by main process)
+          standardFontDataUrl: 'pdfjs://standard_fonts/',
+          cMapUrl: 'pdfjs://cmaps/',
+          cMapPacked: true
+        }).promise
         docRef.current = doc
         numPagesRef.current = doc.numPages
         const container = containerRef.current!

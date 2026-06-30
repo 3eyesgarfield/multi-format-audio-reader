@@ -1,6 +1,7 @@
-import { app, BrowserWindow, ipcMain, dialog, globalShortcut } from 'electron'
+import { app, BrowserWindow, ipcMain, dialog, globalShortcut, protocol, net } from 'electron'
 import { join, extname, basename } from 'path'
 import { readFileSync, existsSync } from 'fs'
+import { pathToFileURL } from 'url'
 import { createHash } from 'crypto'
 import { startSidecar, stopSidecar, waitForSidecar, TTS_BASE } from './sidecar'
 import { store, BookRecord } from './store'
@@ -8,6 +9,33 @@ import { lookup, dictionaryAvailable, lookupEnglish, preloadEcdict } from './dic
 
 let win: BrowserWindow | null = null
 let pendingOpenPath: string | null = null
+
+// Serve pdf.js standard-font + cmap data over a custom scheme so the renderer can
+// fetch them (plain file:// fetch is blocked in the packaged app). This is what
+// lets pdf.js load the REAL font metrics for non-embedded standard fonts, so the
+// (transparent) text layer lines up with the canvas glyphs and word lookup is
+// accurate. Must be registered before app `ready`.
+protocol.registerSchemesAsPrivileged([
+  { scheme: 'pdfjs', privileges: { standard: true, secure: true, supportFetchAPI: true, bypassCSP: true } }
+])
+
+function pdfjsAssetDir(): string {
+  const dev = join(app.getAppPath(), 'node_modules', 'pdfjs-dist')
+  const prod = join(process.resourcesPath, 'pdfjs')
+  return existsSync(join(dev, 'standard_fonts')) ? dev : prod
+}
+
+function registerPdfjsProtocol(): void {
+  const base = pdfjsAssetDir()
+  protocol.handle('pdfjs', (request) => {
+    const url = new URL(request.url)
+    const sub = url.host === 'cmaps' ? 'cmaps' : 'standard_fonts'
+    const name = decodeURIComponent(url.pathname).replace(/^\/+/, '')
+    const file = join(base, sub, name)
+    if (!file.startsWith(join(base, sub))) return new Response('forbidden', { status: 403 })
+    return net.fetch(pathToFileURL(file).toString())
+  })
+}
 
 const FORMATS: Record<string, BookRecord['format']> = {
   '.pdf': 'pdf',
@@ -172,6 +200,7 @@ app.whenReady().then(async () => {
   const fileArg = process.argv.find((a) => detectFormat(a))
   if (fileArg) pendingOpenPath = fileArg
 
+  registerPdfjsProtocol()
   startSidecar()
   registerIpc()
   preloadEcdict() // load the big English->Chinese dict in the background
