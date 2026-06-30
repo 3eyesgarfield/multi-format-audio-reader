@@ -469,6 +469,8 @@ input[type='text'],
   box-shadow: 0 2px 10px rgba(0, 0, 0, 0.35);
   position: relative;
   flex: 0 0 auto;
+  /* clip the text layer to the page so it can't add stray scrollbars / bleed */
+  overflow: hidden;
 }
 .pdf-scroll.mode-single .pdf-page,
 .pdf-scroll.mode-double .pdf-page {

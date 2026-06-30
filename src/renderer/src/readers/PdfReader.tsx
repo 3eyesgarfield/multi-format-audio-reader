@@ -71,8 +71,8 @@ export const PdfReader = forwardRef<ReaderHandle, Props>(function PdfReader(
   const wheelCdRef = useRef(0)
   // locked: single/double mode — hide scrollbars (crop page margins) and let the
   // wheel flip pages instead of scrolling inside the (zoomed-in) page
-  const [locked, setLocked] = useState(false)
-  const lockedRef = useRef(false)
+  const [locked, setLocked] = useState(true)
+  const lockedRef = useRef(true)
   lockedRef.current = locked
   const pageGapRef = useRef(pageGap)
   pageGapRef.current = pageGap
