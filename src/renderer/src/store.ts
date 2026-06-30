@@ -37,6 +37,7 @@ interface AppState {
   dictZhToEn: boolean // also look up Chinese words on hover (中->英)
   showCaption: boolean // show the bottom "now reading" caption bar
   enableKokoro: boolean // load the Kokoro neural engine (off = don't load torch)
+  lookupMode: 'hover' | 'click' // trigger word lookup on hover or on click
   vocabVersion: number // bumped when vocab changes so open panels refresh
 
   setVoices: (v: VoiceInfo[]) => void
@@ -53,6 +54,7 @@ interface AppState {
   setDictZhToEn: (v: boolean) => void
   setShowCaption: (v: boolean) => void
   setEnableKokoro: (v: boolean) => void
+  setLookupMode: (m: 'hover' | 'click') => void
   bumpVocab: () => void
   resetSettings: () => void
 }
@@ -91,6 +93,7 @@ export const useStore = create<AppState>((set) => ({
   dictZhToEn: false,
   showCaption: false,
   enableKokoro: true,
+  lookupMode: 'hover',
   vocabVersion: 0,
 
   setVoices: (voices) => set({ voices }),
@@ -107,6 +110,7 @@ export const useStore = create<AppState>((set) => ({
   setDictZhToEn: (dictZhToEn) => set({ dictZhToEn }),
   setShowCaption: (showCaption) => set({ showCaption }),
   setEnableKokoro: (enableKokoro) => set({ enableKokoro }),
+  setLookupMode: (lookupMode) => set({ lookupMode }),
   bumpVocab: () => set((st) => ({ vocabVersion: st.vocabVersion + 1 })),
   resetSettings: () =>
     set({

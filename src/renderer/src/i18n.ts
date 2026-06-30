@@ -65,7 +65,10 @@ const resources = {
       exitFullscreen: '退出全屏',
       pageGap: '双页间距',
       enableKokoro: '启用 Kokoro 本地语音',
-      enableKokoroHint: '关闭后不加载 torch，启动更快、更省内存（重启应用生效）'
+      enableKokoroHint: '关闭后不加载 torch，启动更快、更省内存（重启应用生效）',
+      lookupMode: '查词方式',
+      lookupHover: '悬停查词',
+      lookupClick: '点击查词'
     }
   },
   en: {
@@ -131,7 +134,10 @@ const resources = {
       exitFullscreen: 'Exit fullscreen',
       pageGap: 'Double-page gap',
       enableKokoro: 'Enable Kokoro local voice',
-      enableKokoroHint: "Off = don't load torch; faster startup & less memory (restart to apply)"
+      enableKokoroHint: "Off = don't load torch; faster startup & less memory (restart to apply)",
+      lookupMode: 'Lookup trigger',
+      lookupHover: 'On hover',
+      lookupClick: 'On click'
     }
   }
 }

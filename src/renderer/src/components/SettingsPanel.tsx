@@ -8,7 +8,7 @@ interface Props {
 
 export function SettingsPanel({ onExport }: Props): JSX.Element {
   const { t } = useTranslation()
-  const { voices, tts, setTts, theme, setTheme, health, sleepMinutes, setSleep, resetSettings, dictZhToEn, setDictZhToEn, showCaption, setShowCaption, viewMode, pdfPageGap, setPdfPageGap, enableKokoro, setEnableKokoro } =
+  const { voices, tts, setTts, theme, setTheme, health, sleepMinutes, setSleep, resetSettings, dictZhToEn, setDictZhToEn, showCaption, setShowCaption, viewMode, pdfPageGap, setPdfPageGap, enableKokoro, setEnableKokoro, lookupMode, setLookupMode } =
     useStore()
 
   const zhVoices = voices.filter((v) => v.lang === 'zh')
@@ -198,6 +198,13 @@ export function SettingsPanel({ onExport }: Props): JSX.Element {
       )}
 
       <hr />
+
+      <div className="set-group">
+        <span>{t('lookupMode')}</span>
+        <button onClick={() => setLookupMode(lookupMode === 'hover' ? 'click' : 'hover')}>
+          {lookupMode === 'hover' ? t('lookupHover') : t('lookupClick')}
+        </button>
+      </div>
 
       <div className="set-group">
         <label>

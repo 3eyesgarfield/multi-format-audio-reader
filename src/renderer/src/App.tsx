@@ -78,6 +78,7 @@ export default function App(): JSX.Element {
       if (saved.dictZhToEn !== undefined) s.setDictZhToEn(saved.dictZhToEn as boolean)
       if (saved.showCaption !== undefined) s.setShowCaption(saved.showCaption as boolean)
       if (saved.enableKokoro !== undefined) s.setEnableKokoro(saved.enableKokoro as boolean)
+      if (saved.lookupMode) s.setLookupMode(saved.lookupMode as never)
       await loadEngines()
       loadedRef.current = true // saved settings now applied -> safe to persist changes
       // pre-warm the TTS engine/model so the first click starts instantly
@@ -120,11 +121,12 @@ export default function App(): JSX.Element {
         pdfPageGap: s.pdfPageGap,
         dictZhToEn: s.dictZhToEn,
         showCaption: s.showCaption,
-        enableKokoro: s.enableKokoro
+        enableKokoro: s.enableKokoro,
+        lookupMode: s.lookupMode
       })
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [s.tts, s.theme, s.viewMode, s.pdfPageGap, s.dictZhToEn, s.showCaption, s.enableKokoro])
+  }, [s.tts, s.theme, s.viewMode, s.pdfPageGap, s.dictZhToEn, s.showCaption, s.enableKokoro, s.lookupMode])
 
   // ---- bind sentences to player ----
   useEffect(() => {
@@ -275,24 +277,8 @@ export default function App(): JSX.Element {
   }
 
   // ---- hover dictionary ----
-  function wordAtPoint(x: number, y: number): { word: string; lang: 'en' | 'zh' } | null {
-    const doc = document as unknown as {
-      caretRangeFromPoint?: (x: number, y: number) => Range | null
-      caretPositionFromPoint?: (x: number, y: number) => { offsetNode: Node; offset: number } | null
-    }
-    let range: Range | null = null
-    if (doc.caretRangeFromPoint) range = doc.caretRangeFromPoint(x, y)
-    else if (doc.caretPositionFromPoint) {
-      const pos = doc.caretPositionFromPoint(x, y)
-      if (pos) {
-        range = document.createRange()
-        range.setStart(pos.offsetNode, pos.offset)
-      }
-    }
-    const node = range?.startContainer
-    if (!node || node.nodeType !== 3) return null
-    const text = node.textContent || ''
-    const off = range!.startOffset
+  // expand the word (en) or take up to 4 chars (zh) around a char offset in `text`
+  function wordFromText(text: string, off: number): { word: string; lang: 'en' | 'zh' } | null {
     const around = text[off] || text[off - 1] || ''
     if (/[A-Za-z]/.test(around)) {
       let st = off
@@ -309,6 +295,38 @@ export default function App(): JSX.Element {
     return null
   }
 
+  function wordAtPoint(x: number, y: number): { word: string; lang: 'en' | 'zh' } | null {
+    // PDF text layer: the spans carry a `transform: scaleX(...)`, which makes
+    // caretRangeFromPoint mis-hit characters (the error grows with zoom). Use the
+    // span's transform-aware bounding box + proportional mapping instead.
+    const elAt = document.elementFromPoint(x, y) as HTMLElement | null
+    const span = elAt?.closest('.pdf-textlayer span') as HTMLElement | null
+    if (span && span.textContent) {
+      const text = span.textContent
+      const rect = span.getBoundingClientRect()
+      const frac = rect.width > 0 ? (x - rect.left) / rect.width : 0
+      const off = Math.max(0, Math.min(text.length - 1, Math.round(frac * text.length)))
+      return wordFromText(text, off)
+    }
+    // normal selectable text (Markdown / EPUB)
+    const doc = document as unknown as {
+      caretRangeFromPoint?: (x: number, y: number) => Range | null
+      caretPositionFromPoint?: (x: number, y: number) => { offsetNode: Node; offset: number } | null
+    }
+    let range: Range | null = null
+    if (doc.caretRangeFromPoint) range = doc.caretRangeFromPoint(x, y)
+    else if (doc.caretPositionFromPoint) {
+      const pos = doc.caretPositionFromPoint(x, y)
+      if (pos) {
+        range = document.createRange()
+        range.setStart(pos.offsetNode, pos.offset)
+      }
+    }
+    const node = range?.startContainer
+    if (!node || node.nodeType !== 3) return null
+    return wordFromText(node.textContent || '', range!.startOffset)
+  }
+
   function scheduleHoverDismiss(): void {
     if (dismissTimer.current) clearTimeout(dismissTimer.current)
     dismissTimer.current = setTimeout(() => setHover(null), 450)
@@ -318,33 +336,46 @@ export default function App(): JSX.Element {
     if (hoverTimer.current) clearTimeout(hoverTimer.current)
   }
 
+  // look up the word under (x,y) and show the card. `immediate` = click mode:
+  // a miss hides the card right away (hover mode instead schedules a soft dismiss
+  // so the cursor can travel into the popup).
+  async function doLookup(x: number, y: number, immediate: boolean): Promise<void> {
+    const miss = (): void => (immediate ? setHover(null) : scheduleHoverDismiss())
+    const w = wordAtPoint(x, y)
+    if (!w) return miss()
+    if (w.lang === 'en') {
+      const e2 = await window.api.dict.lookupEn(w.word)
+      if (e2) {
+        if (dismissTimer.current) clearTimeout(dismissTimer.current)
+        setHover({ word: e2.word, phonetic: e2.phonetic, meaning: e2.translation, lang: 'en', x, y })
+      } else miss()
+    } else if (w.lang === 'zh' && s.dictZhToEn) {
+      const r = await window.api.dict.lookup(w.word)
+      if (r && r.length) {
+        if (dismissTimer.current) clearTimeout(dismissTimer.current)
+        setHover({ word: r[0].word, phonetic: r[0].pinyin, meaning: r[0].defs.join('; '), lang: 'zh', x, y })
+      } else miss()
+    } else miss()
+  }
+
   function onReaderMove(e: React.MouseEvent): void {
+    if (s.lookupMode !== 'hover') return
     const x = e.clientX
     const y = e.clientY
     if (hoverTimer.current) clearTimeout(hoverTimer.current)
-    hoverTimer.current = setTimeout(async () => {
-      const w = wordAtPoint(x, y)
-      if (!w) {
-        scheduleHoverDismiss() // empty area — give time to reach the popup, then hide
-        return
-      }
-      if (w.lang === 'en') {
-        const e2 = await window.api.dict.lookupEn(w.word)
-        if (e2) {
-          if (dismissTimer.current) clearTimeout(dismissTimer.current)
-          setHover({ word: e2.word, phonetic: e2.phonetic, meaning: e2.translation, lang: 'en', x, y })
-        } else scheduleHoverDismiss()
-      } else if (w.lang === 'zh' && s.dictZhToEn) {
-        const r = await window.api.dict.lookup(w.word)
-        if (r && r.length) {
-          if (dismissTimer.current) clearTimeout(dismissTimer.current)
-          setHover({ word: r[0].word, phonetic: r[0].pinyin, meaning: r[0].defs.join('; '), lang: 'zh', x, y })
-        } else scheduleHoverDismiss()
-      } else scheduleHoverDismiss()
-    }, 250)
+    hoverTimer.current = setTimeout(() => doLookup(x, y, false), 250)
+  }
+
+  function onReaderClick(e: React.MouseEvent): void {
+    if (s.lookupMode !== 'click') return
+    if (e.detail !== 1) return // ignore the clicks that compose a double-click
+    const sel = window.getSelection()
+    if (sel && sel.toString().trim().length > 0) return // a selection, not a word tap
+    doLookup(e.clientX, e.clientY, true)
   }
 
   function onReaderLeave(): void {
+    if (s.lookupMode !== 'hover') return // in click mode the card stays until dismissed
     if (hoverTimer.current) clearTimeout(hoverTimer.current)
     scheduleHoverDismiss()
   }
@@ -500,6 +531,7 @@ export default function App(): JSX.Element {
           onMouseUp={onReaderMouseUp}
           onMouseMove={onReaderMove}
           onMouseLeave={onReaderLeave}
+          onClick={onReaderClick}
         >
           {!s.book && <div className="welcome">{t('noBooks')}</div>}
           {s.book?.format === 'md' && (

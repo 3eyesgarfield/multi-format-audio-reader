@@ -209,14 +209,15 @@ export const PdfReader = forwardRef<ReaderHandle, Props>(function PdfReader(
     const canvas = document.createElement('canvas')
     canvas.width = Math.round(viewport.width * dpr)
     canvas.height = Math.round(viewport.height * dpr)
-    const cssW = canvas.width / dpr
-    const cssH = canvas.height / dpr
-    canvas.style.width = `${cssW}px`
-    canvas.style.height = `${cssH}px`
-    host.style.width = `${cssW}px`
-    host.style.height = `${cssH}px`
+    // display the canvas at the viewport's CSS size so the (transparent) text
+    // layer, which is positioned in those same viewport coordinates, lines up
+    // exactly with the rendered glyphs — backing stays at device resolution for
+    // crispness, and the ratio below (≈ dpr) fills the integer backing exactly
+    canvas.style.width = `${viewport.width}px`
+    canvas.style.height = `${viewport.height}px`
+    host.style.width = `${viewport.width}px`
+    host.style.height = `${viewport.height}px`
     host.appendChild(canvas)
-    // fill the integer backing exactly (ratio ≈ dpr) so there's no edge gap
     await page.render({
       canvasContext: canvas.getContext('2d')!,
       viewport,
