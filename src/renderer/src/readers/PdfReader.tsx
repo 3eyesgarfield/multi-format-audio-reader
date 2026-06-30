@@ -12,6 +12,7 @@ pdfjsLib.GlobalWorkerOptions.workerSrc = workerUrl
 interface Props {
   book: BookMeta
   viewMode: ViewMode
+  pageGap: number // px gap between pages in double-page mode
   onSentences: (s: Sentence[]) => void
   onReadFrom: (id: string) => void
 }
@@ -36,7 +37,7 @@ function pageOf(id: string): number {
 }
 
 export const PdfReader = forwardRef<ReaderHandle, Props>(function PdfReader(
-  { book, viewMode, onSentences, onReadFrom },
+  { book, viewMode, pageGap, onSentences, onReadFrom },
   ref
 ) {
   const containerRef = useRef<HTMLDivElement>(null)
@@ -61,6 +62,13 @@ export const PdfReader = forwardRef<ReaderHandle, Props>(function PdfReader(
   zoomRef.current = zoom
   const baseSizeRef = useRef<{ w: number; h: number }>({ w: 612, h: 792 })
   const wheelCdRef = useRef(0)
+  // locked: single/double mode — hide scrollbars (crop page margins) and let the
+  // wheel flip pages instead of scrolling inside the (zoomed-in) page
+  const [locked, setLocked] = useState(false)
+  const lockedRef = useRef(false)
+  lockedRef.current = locked
+  const pageGapRef = useRef(pageGap)
+  pageGapRef.current = pageGap
 
   function fitScale(vp: { width: number; height: number }, mode: ViewMode): number {
     const c = containerRef.current
@@ -86,6 +94,12 @@ export const PdfReader = forwardRef<ReaderHandle, Props>(function PdfReader(
 
   function zoomBy(factor: number): void {
     setZoom(Math.min(5, Math.max(0.25, currentScale() * factor)))
+  }
+
+  // fixed additive step that snaps to clean 5% values (e.g. 100% → 105% → 110%)
+  function zoomStep(delta: number): void {
+    const next = Math.round((currentScale() + delta) / 0.05) * 0.05
+    setZoom(Math.min(5, Math.max(0.25, Math.round(next * 100) / 100)))
   }
 
   // re-size placeholders + re-render after a scale/mode change
@@ -185,20 +199,28 @@ export const PdfReader = forwardRef<ReaderHandle, Props>(function PdfReader(
     renderedScaleRef.current.set(p, scale)
     host.innerHTML = ''
     const viewport = page.getViewport({ scale })
-    // render at the display's physical resolution so it stays crisp on hi-DPI
+    // Render at exactly the screen's device-pixel grid (1:1) so it adapts to any
+    // display dpr and stays crisp at EVERY zoom level. The backing store is an
+    // integer number of device pixels; the CSS size is set to backing/dpr so the
+    // bitmap maps 1:1 onto physical pixels — no supersample, and no fractional
+    // up/down-scaling of the bitmap (that fractional scaling was the real source
+    // of the zoom-dependent softness).
     const dpr = window.devicePixelRatio || 1
     const canvas = document.createElement('canvas')
-    canvas.width = Math.floor(viewport.width * dpr)
-    canvas.height = Math.floor(viewport.height * dpr)
-    canvas.style.width = `${viewport.width}px`
-    canvas.style.height = `${viewport.height}px`
-    host.style.width = `${viewport.width}px`
-    host.style.height = `${viewport.height}px`
+    canvas.width = Math.round(viewport.width * dpr)
+    canvas.height = Math.round(viewport.height * dpr)
+    const cssW = canvas.width / dpr
+    const cssH = canvas.height / dpr
+    canvas.style.width = `${cssW}px`
+    canvas.style.height = `${cssH}px`
+    host.style.width = `${cssW}px`
+    host.style.height = `${cssH}px`
     host.appendChild(canvas)
+    // fill the integer backing exactly (ratio ≈ dpr) so there's no edge gap
     await page.render({
       canvasContext: canvas.getContext('2d')!,
       viewport,
-      transform: dpr !== 1 ? [dpr, 0, 0, dpr, 0, 0] : undefined
+      transform: [canvas.width / viewport.width, 0, 0, canvas.height / viewport.height, 0, 0]
     }).promise
 
     // selectable / highlightable text layer
@@ -245,6 +267,35 @@ export const PdfReader = forwardRef<ReaderHandle, Props>(function PdfReader(
     else setTimeout(() => renderPage(p, host), 150)
   }
 
+  // Spacing between the two pages in double mode, applied as a margin on the
+  // right page so it can go NEGATIVE (= overlap). When negative, the overlapped
+  // strip is clipped off both inner edges (clip-path) so the inner white margins
+  // are hidden and the pages butt together seamlessly.
+  function applyDoubleGap(): void {
+    const container = containerRef.current
+    if (!container) return
+    container.querySelectorAll<HTMLElement>('.pdf-page').forEach((e) => {
+      e.style.clipPath = ''
+      e.style.marginLeft = ''
+      e.style.marginRight = ''
+    })
+    if (viewModeRef.current !== 'double') return
+    const c = curRef.current
+    const leftEl = container.querySelector<HTMLElement>(`.pdf-page[data-page="${c}"]`)
+    const rightEl = container.querySelector<HTMLElement>(`.pdf-page[data-page="${c + 1}"]`)
+    if (!rightEl) return // odd last page: only one visible, nothing between
+    const g = pageGapRef.current
+    if (g >= 0) {
+      rightEl.style.marginLeft = `${g}px`
+    } else {
+      const ov = -g
+      const half = ov / 2
+      if (leftEl) leftEl.style.clipPath = `inset(0 ${half}px 0 0)`
+      rightEl.style.clipPath = `inset(0 0 0 ${half}px)`
+      rightEl.style.marginLeft = `${-ov}px`
+    }
+  }
+
   // arrange pages for the current view mode (scroll / single / double)
   function layout(): void {
     const container = containerRef.current
@@ -266,6 +317,7 @@ export const PdfReader = forwardRef<ReaderHandle, Props>(function PdfReader(
       )
       pages.forEach((el) => io.observe(el))
       ioRef.current = io
+      applyDoubleGap() // clears any margin/clip left over from double mode
       return
     }
 
@@ -287,6 +339,7 @@ export const PdfReader = forwardRef<ReaderHandle, Props>(function PdfReader(
     })
     // pre-render the next spread during idle time (not at the flip itself)
     ahead.forEach((p) => idleRender(p))
+    applyDoubleGap()
   }
 
   useEffect(() => {
@@ -407,6 +460,12 @@ export const PdfReader = forwardRef<ReaderHandle, Props>(function PdfReader(
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [cur])
 
+  // live-update the double-page spacing when the setting changes
+  useEffect(() => {
+    applyDoubleGap()
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pageGap])
+
   // mouse wheel: ctrl+wheel = zoom; plain wheel flips pages in single/double
   useEffect(() => {
     const c = containerRef.current
@@ -418,10 +477,14 @@ export const PdfReader = forwardRef<ReaderHandle, Props>(function PdfReader(
         return
       }
       if (viewModeRef.current === 'scroll') return
-      const atBottom = c.scrollTop + c.clientHeight >= c.scrollHeight - 2
-      const atTop = c.scrollTop <= 2
       const dir = e.deltaY > 0 ? 1 : -1
-      if ((dir > 0 && !atBottom) || (dir < 0 && !atTop)) return // let the page scroll first
+      // when not locked, let the (overflowing) page scroll first and only flip at
+      // the top/bottom edge; when locked, the wheel always flips pages
+      if (!lockedRef.current) {
+        const atBottom = c.scrollTop + c.clientHeight >= c.scrollHeight - 2
+        const atTop = c.scrollTop <= 2
+        if ((dir > 0 && !atBottom) || (dir < 0 && !atTop)) return
+      }
       e.preventDefault()
       const now = Date.now()
       if (now < wheelCdRef.current) return
@@ -608,13 +671,31 @@ export const PdfReader = forwardRef<ReaderHandle, Props>(function PdfReader(
   const showNav = viewMode !== 'scroll'
   return (
     <div className="pdf-wrap">
-      <div className="pdf-scroll" ref={containerRef} onDoubleClick={handleDblClick} />
+      <div
+        className="pdf-scroll"
+        ref={containerRef}
+        onDoubleClick={handleDblClick}
+        style={
+          locked && viewMode !== 'scroll'
+            ? { overflow: 'hidden', alignItems: 'center', justifyContent: 'center' }
+            : undefined
+        }
+      />
       <div className="pdf-zoom" title="Ctrl+滚轮 缩放">
-        <button onClick={() => zoomBy(1 / 1.2)}>−</button>
+        <button onClick={() => zoomStep(-0.05)}>−</button>
         <button className="zlabel" onClick={() => setZoom((z) => (z === 'fit' ? 1 : 'fit'))}>
           {zoom === 'fit' ? '适合' : `${Math.round((zoom as number) * 100)}%`}
         </button>
-        <button onClick={() => zoomBy(1.2)}>＋</button>
+        <button onClick={() => zoomStep(0.05)}>＋</button>
+        {showNav && (
+          <button
+            className={locked ? 'on' : ''}
+            onClick={() => setLocked((v) => !v)}
+            title={locked ? '解锁（恢复滚动条）' : '锁定缩放/铺满（隐藏滚动条，滚轮翻页）'}
+          >
+            {locked ? '🔒' : '🔓'}
+          </button>
+        )}
       </div>
       {showNav && (
         <div className="pdf-nav">

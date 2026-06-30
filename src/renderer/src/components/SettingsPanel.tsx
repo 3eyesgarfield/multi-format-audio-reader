@@ -8,7 +8,7 @@ interface Props {
 
 export function SettingsPanel({ onExport }: Props): JSX.Element {
   const { t } = useTranslation()
-  const { voices, tts, setTts, theme, setTheme, health, sleepMinutes, setSleep, resetSettings, dictZhToEn, setDictZhToEn, showCaption, setShowCaption } =
+  const { voices, tts, setTts, theme, setTheme, health, sleepMinutes, setSleep, resetSettings, dictZhToEn, setDictZhToEn, showCaption, setShowCaption, viewMode, pdfPageGap, setPdfPageGap, enableKokoro, setEnableKokoro } =
     useStore()
 
   const zhVoices = voices.filter((v) => v.lang === 'zh')
@@ -181,6 +181,22 @@ export function SettingsPanel({ onExport }: Props): JSX.Element {
         />
       </div>
 
+      {viewMode === 'double' && (
+        <div className="set-group">
+          <span>
+            {t('pageGap')}: {pdfPageGap}px
+          </span>
+          <input
+            type="range"
+            min={-100}
+            max={120}
+            step={2}
+            value={pdfPageGap}
+            onChange={(e) => setPdfPageGap(Number(e.target.value))}
+          />
+        </div>
+      )}
+
       <hr />
 
       <div className="set-group">
@@ -216,6 +232,18 @@ export function SettingsPanel({ onExport }: Props): JSX.Element {
       </div>
 
       <hr />
+
+      <div className="set-group">
+        <label>
+          <input
+            type="checkbox"
+            checked={enableKokoro}
+            onChange={(e) => setEnableKokoro(e.target.checked)}
+          />
+          {t('enableKokoro')}
+        </label>
+        <span style={{ fontSize: 11, opacity: 0.7 }}>{t('enableKokoroHint')}</span>
+      </div>
 
       <div className="set-group">
         <span>{t('engineStatus')}</span>

@@ -2,6 +2,7 @@ import { spawn, ChildProcess } from 'child_process'
 import { existsSync } from 'fs'
 import { join } from 'path'
 import { app } from 'electron'
+import { store } from './store'
 
 export const TTS_PORT = 8756
 export const TTS_BASE = `http://127.0.0.1:${TTS_PORT}`
@@ -21,9 +22,13 @@ function resolvePaths(): { backendDir: string; python: string } {
 export function startSidecar(): void {
   if (proc) return
   const { backendDir, python } = resolvePaths()
+  // honour the "enable Kokoro" setting: when off, tell the sidecar to skip
+  // loading kokoro/torch entirely (faster startup, lower memory)
+  const env: NodeJS.ProcessEnv = { ...process.env, PYTHONIOENCODING: 'utf-8' }
+  if (store.getSettings().enableKokoro === false) env.READER_DISABLE_KOKORO = '1'
   proc = spawn(python, ['server.py', '--port', String(TTS_PORT)], {
     cwd: backendDir,
-    env: { ...process.env, PYTHONIOENCODING: 'utf-8' },
+    env,
     windowsHide: true
   })
   proc.stdout?.on('data', (d) => console.log('[tts]', d.toString().trim()))

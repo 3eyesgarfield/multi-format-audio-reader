@@ -10,6 +10,7 @@ the app still works with the SAPI + Edge engines.
 from __future__ import annotations
 
 import io
+import os
 
 from .base import TTSEngine, Voice, clamp
 
@@ -52,6 +53,11 @@ class KokoroEngine(TTSEngine):
 
     def available(self) -> bool:
         if self._ok is None:
+            # Hard off-switch: when disabled we never import kokoro/torch, so the
+            # heavy library isn't loaded into the process at all.
+            if os.environ.get("READER_DISABLE_KOKORO"):
+                self._ok = False
+                return self._ok
             try:
                 import kokoro  # noqa: F401
                 import soundfile  # noqa: F401

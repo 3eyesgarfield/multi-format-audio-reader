@@ -53,6 +53,10 @@ function createWindow(): void {
     console.log('[renderer] gone:', details.reason)
   })
 
+  // hide the native File/Edit menu bar while in (HTML) fullscreen, restore on exit
+  win.on('enter-html-full-screen', () => win?.setMenuBarVisibility(false))
+  win.on('leave-html-full-screen', () => win?.setMenuBarVisibility(true))
+
   win.on('closed', () => (win = null))
 }
 

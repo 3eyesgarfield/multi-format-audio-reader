@@ -30,11 +30,13 @@ interface AppState {
   book: BookMeta | null
   theme: ReaderTheme
   viewMode: ViewMode
+  pdfPageGap: number // px gap between the two pages in double-page mode
   // ui
   panel: 'library' | 'toc' | 'search' | 'settings' | 'notes' | 'vocab' | null
   sleepMinutes: number | null
   dictZhToEn: boolean // also look up Chinese words on hover (中->英)
   showCaption: boolean // show the bottom "now reading" caption bar
+  enableKokoro: boolean // load the Kokoro neural engine (off = don't load torch)
   vocabVersion: number // bumped when vocab changes so open panels refresh
 
   setVoices: (v: VoiceInfo[]) => void
@@ -45,10 +47,12 @@ interface AppState {
   setBook: (b: BookMeta | null) => void
   setTheme: (patch: Partial<ReaderTheme>) => void
   setViewMode: (m: ViewMode) => void
+  setPdfPageGap: (g: number) => void
   setPanel: (p: AppState['panel']) => void
   setSleep: (m: number | null) => void
   setDictZhToEn: (v: boolean) => void
   setShowCaption: (v: boolean) => void
+  setEnableKokoro: (v: boolean) => void
   bumpVocab: () => void
   resetSettings: () => void
 }
@@ -81,10 +85,12 @@ export const useStore = create<AppState>((set) => ({
   book: null,
   theme: defaultTheme,
   viewMode: 'scroll',
+  pdfPageGap: 16,
   panel: 'library',
   sleepMinutes: null,
   dictZhToEn: false,
   showCaption: false,
+  enableKokoro: true,
   vocabVersion: 0,
 
   setVoices: (voices) => set({ voices }),
@@ -95,16 +101,19 @@ export const useStore = create<AppState>((set) => ({
   setBook: (book) => set({ book }),
   setTheme: (patch) => set((s) => ({ theme: { ...s.theme, ...patch } })),
   setViewMode: (viewMode) => set({ viewMode }),
+  setPdfPageGap: (pdfPageGap) => set({ pdfPageGap }),
   setPanel: (panel) => set({ panel }),
   setSleep: (sleepMinutes) => set({ sleepMinutes }),
   setDictZhToEn: (dictZhToEn) => set({ dictZhToEn }),
   setShowCaption: (showCaption) => set({ showCaption }),
+  setEnableKokoro: (enableKokoro) => set({ enableKokoro }),
   bumpVocab: () => set((st) => ({ vocabVersion: st.vocabVersion + 1 })),
   resetSettings: () =>
     set({
       tts: { ...defaultTts },
       theme: { ...defaultTheme },
       viewMode: 'scroll',
+      pdfPageGap: 16,
       sleepMinutes: null,
       showCaption: false
     })

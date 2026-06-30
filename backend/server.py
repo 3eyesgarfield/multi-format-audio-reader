@@ -51,11 +51,14 @@ def _synth(text: str, engine: str, voice: str, rate: float = 1.0,
 @app.get("/health")
 def health() -> JSONResponse:
     gpu = False
-    try:
-        import torch
-        gpu = bool(torch.cuda.is_available())
-    except Exception:
-        gpu = False
+    # only probe torch when Kokoro is enabled — otherwise importing torch here
+    # would defeat the off-switch and load the heavy library anyway
+    if not os.environ.get("READER_DISABLE_KOKORO"):
+        try:
+            import torch
+            gpu = bool(torch.cuda.is_available())
+        except Exception:
+            gpu = False
     return JSONResponse({
         "status": "ok",
         "engines": {name: eng.available() for name, eng in ENGINES.items()},

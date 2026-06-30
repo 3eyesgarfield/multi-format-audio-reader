@@ -35,9 +35,31 @@ export default function App(): JSX.Element {
   const dismissTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const [noteBtn, setNoteBtn] = useState<{ text: string; sentenceId?: string; x: number; y: number } | null>(null)
   const [exporting, setExporting] = useState<{ done: number; total: number } | null>(null)
+  const [isFullscreen, setIsFullscreen] = useState(false)
 
   // ---- one-time init ----
   useEffect(() => {
+    // (re)load engine health + voice list from the sidecar. Safe to call again:
+    // the first attempt at launch can land before the Python sidecar is up, so we
+    // also re-run this when main signals `tts:ready` (and bail quietly until then).
+    const loadEngines = async (): Promise<void> => {
+      const st = useStore.getState()
+      const health = await getHealth()
+      if (health) st.setHealth(health)
+      const voices = await getVoices()
+      if (!voices.length) return // sidecar not ready yet — tts:ready will retrigger
+      st.setVoices(voices)
+      const ids = new Set(voices.map((v) => v.id))
+      const zh = voices.find((v) => v.lang === 'zh')
+      const en = voices.find((v) => v.lang === 'en')
+      const cur = useStore.getState().tts
+      const patch: Record<string, string> = {}
+      if (!ids.has(cur.voiceZh) && zh) patch.voiceZh = zh.id
+      if (!ids.has(cur.voiceEn) && en) patch.voiceEn = en.id
+      if (!ids.has(cur.voiceSingle) && zh) patch.voiceSingle = zh.id
+      if (Object.keys(patch).length) st.setTts(patch as never)
+    }
+
     ;(async () => {
       await initTtsBase()
       const saved = (await window.api.store.getSettings()) as Record<string, unknown>
@@ -52,21 +74,11 @@ export default function App(): JSX.Element {
       }
       if (saved.theme) s.setTheme(saved.theme as never)
       if (saved.viewMode) s.setViewMode(saved.viewMode as never)
+      if (saved.pdfPageGap !== undefined) s.setPdfPageGap(saved.pdfPageGap as number)
       if (saved.dictZhToEn !== undefined) s.setDictZhToEn(saved.dictZhToEn as boolean)
       if (saved.showCaption !== undefined) s.setShowCaption(saved.showCaption as boolean)
-      const health = await getHealth()
-      s.setHealth(health)
-      const voices = await getVoices()
-      s.setVoices(voices)
-      // sensible voice defaults if current ones aren't present
-      const ids = new Set(voices.map((v) => v.id))
-      const zh = voices.find((v) => v.lang === 'zh')
-      const en = voices.find((v) => v.lang === 'en')
-      const patch: Record<string, string> = {}
-      if (!ids.has(s.tts.voiceZh) && zh) patch.voiceZh = zh.id
-      if (!ids.has(s.tts.voiceEn) && en) patch.voiceEn = en.id
-      if (!ids.has(s.tts.voiceSingle) && zh) patch.voiceSingle = zh.id
-      if (Object.keys(patch).length) s.setTts(patch as never)
+      if (saved.enableKokoro !== undefined) s.setEnableKokoro(saved.enableKokoro as boolean)
+      await loadEngines()
       loadedRef.current = true // saved settings now applied -> safe to persist changes
       // pre-warm the TTS engine/model so the first click starts instantly
       // (delay lets the player pick up the loaded voice settings first)
@@ -82,6 +94,10 @@ export default function App(): JSX.Element {
     })
     window.api.onOpenPath((meta) => {
       if (meta) openBook(meta as BookMeta)
+    })
+    // sidecar finished booting -> (re)load voices now that /voices will answer
+    window.api.onTtsReady((ok) => {
+      if (ok) loadEngines()
     })
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
@@ -101,12 +117,14 @@ export default function App(): JSX.Element {
         tts: s.tts,
         theme: s.theme,
         viewMode: s.viewMode,
+        pdfPageGap: s.pdfPageGap,
         dictZhToEn: s.dictZhToEn,
-        showCaption: s.showCaption
+        showCaption: s.showCaption,
+        enableKokoro: s.enableKokoro
       })
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [s.tts, s.theme, s.viewMode, s.dictZhToEn, s.showCaption])
+  }, [s.tts, s.theme, s.viewMode, s.pdfPageGap, s.dictZhToEn, s.showCaption, s.enableKokoro])
 
   // ---- bind sentences to player ----
   useEffect(() => {
@@ -177,6 +195,18 @@ export default function App(): JSX.Element {
     return () => window.removeEventListener('keydown', onKey)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
+
+  // ---- fullscreen (immersive reading) ----
+  useEffect(() => {
+    const onFs = (): void => setIsFullscreen(!!document.fullscreenElement)
+    document.addEventListener('fullscreenchange', onFs)
+    return () => document.removeEventListener('fullscreenchange', onFs)
+  }, [])
+
+  function toggleFullscreen(): void {
+    if (document.fullscreenElement) document.exitFullscreen()
+    else document.documentElement.requestFullscreen()
+  }
 
   function openBook(meta: BookMeta): void {
     // re-opening the already-open book: just close the panel, keep state/playback
@@ -362,7 +392,8 @@ export default function App(): JSX.Element {
     [sentences, s.activeSentence]
   )
 
-  const rootClass = s.theme.dark ? 'app dark' : 'app light'
+  const rootClass =
+    (s.theme.dark ? 'app dark' : 'app light') + (isFullscreen ? ' immersive' : '')
   const readerStyle = {
     ['--reader-font-size' as string]: `${s.theme.fontSize}px`,
     ['--reader-line-height' as string]: String(s.theme.lineHeight),
@@ -480,6 +511,7 @@ export default function App(): JSX.Element {
               ref={readerRef}
               book={s.book}
               viewMode={s.viewMode}
+              pageGap={s.pdfPageGap}
               onSentences={onSentences}
               onReadFrom={readFrom}
             />
@@ -519,6 +551,29 @@ export default function App(): JSX.Element {
           onMouseLeave={scheduleHoverDismiss}
         />
       )}
+
+      {/* floating controls (top-right, semi-transparent) */}
+      <div className="float-ctrls">
+        {/* play/pause only while immersive — the topbar transport is hidden then */}
+        {isFullscreen && (
+          <button
+            className="fc-btn"
+            title={s.playState === 'playing' ? t('pause') : t('play')}
+            onMouseDown={(e) => e.stopPropagation()}
+            onClick={() => p?.toggle()}
+          >
+            {s.playState === 'playing' ? '⏸' : '▶'}
+          </button>
+        )}
+        <button
+          className="fc-btn"
+          title={isFullscreen ? t('exitFullscreen') : t('fullscreen')}
+          onMouseDown={(e) => e.stopPropagation()}
+          onClick={toggleFullscreen}
+        >
+          {isFullscreen ? '🗗' : '⛶'}
+        </button>
+      </div>
 
       {exporting && (
         <div className="export-overlay">

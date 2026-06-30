@@ -60,7 +60,12 @@ const resources = {
       confirmClearAll: '确定清空全部？',
       noNotes: '还没有高亮或笔记，选中文字即可添加',
       dictZhToEn: '中文也悬停查词(中→英)',
-      showCaption: '显示朗读字幕(底部)'
+      showCaption: '显示朗读字幕(底部)',
+      fullscreen: '全屏沉浸阅读',
+      exitFullscreen: '退出全屏',
+      pageGap: '双页间距',
+      enableKokoro: '启用 Kokoro 本地语音',
+      enableKokoroHint: '关闭后不加载 torch，启动更快、更省内存（重启应用生效）'
     }
   },
   en: {
@@ -121,7 +126,12 @@ const resources = {
       confirmClearAll: 'Clear everything?',
       noNotes: 'No highlights or notes yet — select text to add one',
       dictZhToEn: 'Hover-lookup Chinese too (中→en)',
-      showCaption: 'Show reading caption (bottom)'
+      showCaption: 'Show reading caption (bottom)',
+      fullscreen: 'Immersive fullscreen',
+      exitFullscreen: 'Exit fullscreen',
+      pageGap: 'Double-page gap',
+      enableKokoro: 'Enable Kokoro local voice',
+      enableKokoroHint: "Off = don't load torch; faster startup & less memory (restart to apply)"
     }
   }
 }
