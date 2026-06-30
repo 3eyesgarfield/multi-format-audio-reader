@@ -12,7 +12,12 @@ body,
 .app {
   display: grid;
   grid-template-columns: 56px auto 1fr;
+  /* pin the single row to the viewport height so the inner flex chain has a
+     definite height — otherwise an auto row lets content (page + padding) push
+     the body ~20px taller and create a stray window scrollbar */
+  grid-template-rows: minmax(0, 1fr);
   height: 100%;
+  overflow: hidden;
   --bg: #1e1e1e;
   --bg2: #252526;
   --bg3: #2d2d30;
@@ -406,20 +411,33 @@ input[type='text'],
 }
 
 /* persistent user highlights (notes) — colour driven by data-hl */
-.sent[data-hl='yellow'],
-.pdf-textlayer span[data-hl='yellow'] {
+.sent[data-hl='yellow'] {
   background: rgba(255, 213, 79, 0.45);
 }
-.sent[data-hl='green'],
-.pdf-textlayer span[data-hl='green'] {
+.sent[data-hl='green'] {
   background: rgba(129, 212, 103, 0.45);
 }
-.sent[data-hl='pink'],
-.pdf-textlayer span[data-hl='pink'] {
+.sent[data-hl='pink'] {
   background: rgba(244, 143, 177, 0.5);
 }
+/* PDF: the text layer's boxes overlap, so semi-transparent highlights would stack
+   their alpha and darken at the seams. Use opaque colours blended with `darken`
+   (over the white page) so overlaps don't compound — like a real highlighter. */
+.pdf-textlayer span[data-hl],
 .pdf-textlayer span.active {
-  background: var(--hl) !important;
+  mix-blend-mode: darken;
+}
+.pdf-textlayer span[data-hl='yellow'] {
+  background: rgb(255, 226, 130);
+}
+.pdf-textlayer span[data-hl='green'] {
+  background: rgb(176, 224, 150);
+}
+.pdf-textlayer span[data-hl='pink'] {
+  background: rgb(246, 170, 196);
+}
+.pdf-textlayer span.active {
+  background: rgb(150, 200, 255) !important;
 }
 /* keep selected PDF text invisible (only the highlight band shows) so selecting
    doesn't reveal the sans-serif text-layer glyphs over the canvas */
@@ -549,6 +567,16 @@ input[type='text'],
   min-width: 46px;
   text-align: center;
 }
+/* pdf.js appends a measuring <canvas class="hiddenCanvasElement"> to <body>; pin
+   it out of flow so it can't add ~20px and create a stray window scrollbar */
+canvas.hiddenCanvasElement {
+  position: fixed !important;
+  top: 0 !important;
+  left: 0 !important;
+  width: 0 !important;
+  height: 0 !important;
+  pointer-events: none;
+}
 .pdf-textlayer {
   position: absolute;
   inset: 0;
@@ -562,10 +590,6 @@ input[type='text'],
   cursor: pointer;
   transform-origin: 0 0;
   border-radius: 2px;
-}
-.pdf-textlayer span.active {
-  background: var(--hl);
-  box-shadow: 0 0 0 2px var(--hl);
 }
 /* debug (Ctrl+Shift+L): reveal the text layer to check it lines up with glyphs */
 body.show-textlayer .pdf-textlayer span {
