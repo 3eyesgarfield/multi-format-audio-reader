@@ -13,6 +13,8 @@ interface Props {
   book: BookMeta
   viewMode: ViewMode
   pageGap: number // px gap between pages in double-page mode
+  cropTop: number // fraction of page height at the top to exclude from reading (header)
+  cropBottom: number // fraction at the bottom to exclude from reading (footer)
   onSentences: (s: Sentence[]) => void
   onReadFrom: (id: string) => void
 }
@@ -25,6 +27,7 @@ interface PageItem {
   width: number
   fontName?: string
   sentId?: string
+  noRead?: boolean // header/footer item: kept for index alignment but not read
 }
 
 interface PageData {
@@ -44,7 +47,7 @@ function pageOf(id: string): number {
 }
 
 export const PdfReader = forwardRef<ReaderHandle, Props>(function PdfReader(
-  { book, viewMode, pageGap, onSentences, onReadFrom },
+  { book, viewMode, pageGap, cropTop, cropBottom, onSentences, onReadFrom },
   ref
 ) {
   const containerRef = useRef<HTMLDivElement>(null)
@@ -76,6 +79,10 @@ export const PdfReader = forwardRef<ReaderHandle, Props>(function PdfReader(
   lockedRef.current = locked
   const pageGapRef = useRef(pageGap)
   pageGapRef.current = pageGap
+  const cropTopRef = useRef(cropTop)
+  cropTopRef.current = cropTop
+  const cropBottomRef = useRef(cropBottom)
+  cropBottomRef.current = cropBottom
 
   function fitScale(vp: { width: number; height: number }, mode: ViewMode): number {
     const c = containerRef.current
@@ -131,6 +138,9 @@ export const PdfReader = forwardRef<ReaderHandle, Props>(function PdfReader(
     if (!doc) return null
     const page = await doc.getPage(p)
     const tc = await page.getTextContent()
+    const pageH = page.getViewport({ scale: 1 }).height || 1
+    const cropT = cropTopRef.current
+    const cropB = cropBottomRef.current
     let text = ''
     const items: PageItem[] = []
     let prevY: number | null = null
@@ -139,6 +149,15 @@ export const PdfReader = forwardRef<ReaderHandle, Props>(function PdfReader(
       if (!('str' in it)) continue
       const str = it.str
       const tr = it.transform as number[]
+      const fontName = (it as { fontName?: string }).fontName
+      // header (near top) / footer (near bottom) band: keep the item for index
+      // alignment with the text layer, but don't fold it into the reading text so
+      // page numbers / running heads aren't spoken or highlighted
+      const yFrac = tr[5] / pageH
+      if ((cropT > 0 && yFrac > 1 - cropT) || (cropB > 0 && yFrac < cropB)) {
+        items.push({ str, start: text.length, end: text.length, transform: tr, width: it.width, fontName, noRead: true })
+        continue
+      }
       const size = Math.hypot(tr[2], tr[3]) || Math.abs(tr[3]) || 10
       const y = tr[5]
       // big vertical gap between text runs = paragraph/heading boundary -> hard
@@ -149,12 +168,13 @@ export const PdfReader = forwardRef<ReaderHandle, Props>(function PdfReader(
       }
       const start = text.length
       text += str
-      items.push({ str, start, end: text.length, transform: tr, width: it.width, fontName: (it as { fontName?: string }).fontName })
+      items.push({ str, start, end: text.length, transform: tr, width: it.width, fontName })
       prevY = y
       prevSize = size
     }
     const segs = segment(text, `pdf-${p}`).map((s, k) => ({ ...s, id: `pdf-${p}-${k}` }))
     for (const item of items) {
+      if (item.noRead) continue
       const s = segs.find((sn) => item.start >= sn.start && item.start < sn.end)
       if (s) item.sentId = s.id
     }
@@ -236,6 +256,13 @@ export const PdfReader = forwardRef<ReaderHandle, Props>(function PdfReader(
       transform: [canvas.width / viewport.width, 0, 0, canvas.height / viewport.height, 0, 0]
     }).promise
 
+    // merged-highlight canvas (sits over the page image, under the text layer)
+    const hlCanvas = document.createElement('canvas')
+    hlCanvas.className = 'pdf-hl'
+    hlCanvas.width = Math.round(viewport.width)
+    hlCanvas.height = Math.round(viewport.height)
+    host.appendChild(hlCanvas)
+
     // selectable / highlightable text layer — rendered by pdf.js's OFFICIAL
     // TextLayer so the transparent glyph boxes line up exactly with the canvas
     // (a hand-rolled span + scaleX drifts across a line because PDF word spacing
@@ -267,6 +294,7 @@ export const PdfReader = forwardRef<ReaderHandle, Props>(function PdfReader(
     }
     if (hlRef.current.length) applyHighlights(containerRef.current, '.pdf-textlayer span', hlRef.current)
     if (activeRef.current && pageOf(activeRef.current) === p) applyActive(activeRef.current)
+    paintHost(host)
   }
 
   // render a page during main-thread idle time, so heavy canvas work never lands
@@ -454,6 +482,31 @@ export const PdfReader = forwardRef<ReaderHandle, Props>(function PdfReader(
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [viewMode, zoom])
 
+  // header/footer crop changed -> re-extract text (cached) so the excluded bands
+  // drop out of the reading flow. Debounced so dragging the slider isn't heavy.
+  useEffect(() => {
+    const doc = docRef.current
+    if (!doc) return // not loaded yet; the loader does the first extraction
+    let cancelled = false
+    const t = setTimeout(async () => {
+      pageDataRef.current.clear()
+      renderedScaleRef.current.clear()
+      mergeMapRef.current.clear()
+      mergedRef.current = []
+      for (let p = 1; p <= doc.numPages; p++) {
+        if (cancelled) return
+        await ensurePageData(p)
+        if (p % 5 === 0 || p === doc.numPages) rebuildGlobal()
+      }
+      if (!cancelled) refresh()
+    }, 400)
+    return () => {
+      cancelled = true
+      clearTimeout(t)
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cropTop, cropBottom])
+
   // re-fit the pages when the window/container is resized (e.g. maximized)
   useEffect(() => {
     const c = containerRef.current
@@ -540,10 +593,46 @@ export const PdfReader = forwardRef<ReaderHandle, Props>(function PdfReader(
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
+  // Paint a page's highlights onto its merged <canvas class="pdf-hl">. Each colour
+  // is filled in ONE path, so overlapping text-layer span boxes don't stack their
+  // alpha (no seam darkening) and the glyph strokes stay their normal weight.
+  const HL_COLORS: Record<string, string> = {
+    yellow: 'rgba(255, 213, 79, 0.45)',
+    green: 'rgba(129, 212, 103, 0.45)',
+    pink: 'rgba(244, 143, 177, 0.5)'
+  }
+  function paintHost(host: HTMLElement): void {
+    const hl = host.querySelector('canvas.pdf-hl') as HTMLCanvasElement | null
+    const ctx = hl?.getContext('2d')
+    if (!hl || !ctx) return
+    ctx.clearRect(0, 0, hl.width, hl.height)
+    const hr = host.getBoundingClientRect()
+    if (hr.width < 1) return
+    const sx = hl.width / hr.width
+    const sy = hl.height / hr.height
+    const fill = (sel: string, color: string): void => {
+      const spans = host.querySelectorAll(sel)
+      if (!spans.length) return
+      ctx.fillStyle = color
+      ctx.beginPath()
+      spans.forEach((s) => {
+        const r = (s as HTMLElement).getBoundingClientRect()
+        ctx.rect((r.left - hr.left) * sx, (r.top - hr.top) * sy, r.width * sx, r.height * sy)
+      })
+      ctx.fill()
+    }
+    for (const [name, color] of Object.entries(HL_COLORS)) fill(`.pdf-textlayer span[data-hl="${name}"]`, color)
+    fill('.pdf-textlayer span.active', 'rgba(78, 161, 255, 0.4)')
+  }
+  function paintAllHighlights(): void {
+    containerRef.current?.querySelectorAll('.pdf-page').forEach((el) => paintHost(el as HTMLElement))
+  }
+
   function clearActive(): void {
-    containerRef.current
-      ?.querySelectorAll('.pdf-textlayer span.active')
-      .forEach((s) => s.classList.remove('active'))
+    const spans = containerRef.current?.querySelectorAll('.pdf-textlayer span.active')
+    if (!spans?.length) return
+    spans.forEach((s) => s.classList.remove('active'))
+    paintAllHighlights()
   }
   function isVisible(el: HTMLElement): boolean {
     const c = containerRef.current
@@ -556,6 +645,7 @@ export const PdfReader = forwardRef<ReaderHandle, Props>(function PdfReader(
     const spans = containerRef.current?.querySelectorAll(`.pdf-textlayer span[data-id="${id}"]`)
     if (spans && spans.length) {
       spans.forEach((s) => s.classList.add('active'))
+      paintAllHighlights()
       // only scroll if the sentence isn't already on screen (avoids yanking the
       // view, esp. for sentences that span a page boundary)
       if (![...spans].some((s) => isVisible(s as HTMLElement))) {
@@ -657,6 +747,7 @@ export const PdfReader = forwardRef<ReaderHandle, Props>(function PdfReader(
     applyHighlights: (hls) => {
       hlRef.current = hls
       applyHighlights(containerRef.current, '.pdf-textlayer span', hls)
+      paintAllHighlights()
     },
     goToSentence: (id) => {
       const p = pageOf(id)

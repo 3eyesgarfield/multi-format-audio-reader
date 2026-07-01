@@ -75,6 +75,8 @@ export default function App(): JSX.Element {
       if (saved.theme) s.setTheme(saved.theme as never)
       if (saved.viewMode) s.setViewMode(saved.viewMode as never)
       if (saved.pdfPageGap !== undefined) s.setPdfPageGap(saved.pdfPageGap as number)
+      if (saved.pdfCropTop !== undefined) s.setPdfCropTop(saved.pdfCropTop as number)
+      if (saved.pdfCropBottom !== undefined) s.setPdfCropBottom(saved.pdfCropBottom as number)
       if (saved.dictZhToEn !== undefined) s.setDictZhToEn(saved.dictZhToEn as boolean)
       if (saved.showCaption !== undefined) s.setShowCaption(saved.showCaption as boolean)
       if (saved.enableKokoro !== undefined) s.setEnableKokoro(saved.enableKokoro as boolean)
@@ -119,6 +121,8 @@ export default function App(): JSX.Element {
         theme: s.theme,
         viewMode: s.viewMode,
         pdfPageGap: s.pdfPageGap,
+        pdfCropTop: s.pdfCropTop,
+        pdfCropBottom: s.pdfCropBottom,
         dictZhToEn: s.dictZhToEn,
         showCaption: s.showCaption,
         enableKokoro: s.enableKokoro,
@@ -126,7 +130,7 @@ export default function App(): JSX.Element {
       })
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [s.tts, s.theme, s.viewMode, s.pdfPageGap, s.dictZhToEn, s.showCaption, s.enableKokoro, s.lookupMode])
+  }, [s.tts, s.theme, s.viewMode, s.pdfPageGap, s.pdfCropTop, s.pdfCropBottom, s.dictZhToEn, s.showCaption, s.enableKokoro, s.lookupMode])
 
   // ---- bind sentences to player ----
   useEffect(() => {
@@ -563,6 +567,8 @@ export default function App(): JSX.Element {
               book={s.book}
               viewMode={s.viewMode}
               pageGap={s.pdfPageGap}
+              cropTop={s.pdfCropTop}
+              cropBottom={s.pdfCropBottom}
               onSentences={onSentences}
               onReadFrom={readFrom}
             />

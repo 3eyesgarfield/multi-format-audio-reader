@@ -31,6 +31,8 @@ interface AppState {
   theme: ReaderTheme
   viewMode: ViewMode
   pdfPageGap: number // px gap between the two pages in double-page mode
+  pdfCropTop: number // fraction of page height to crop off the top (header)
+  pdfCropBottom: number // fraction of page height to crop off the bottom (footer)
   // ui
   panel: 'library' | 'toc' | 'search' | 'settings' | 'notes' | 'vocab' | null
   sleepMinutes: number | null
@@ -49,6 +51,8 @@ interface AppState {
   setTheme: (patch: Partial<ReaderTheme>) => void
   setViewMode: (m: ViewMode) => void
   setPdfPageGap: (g: number) => void
+  setPdfCropTop: (v: number) => void
+  setPdfCropBottom: (v: number) => void
   setPanel: (p: AppState['panel']) => void
   setSleep: (m: number | null) => void
   setDictZhToEn: (v: boolean) => void
@@ -88,6 +92,8 @@ export const useStore = create<AppState>((set) => ({
   theme: defaultTheme,
   viewMode: 'scroll',
   pdfPageGap: 16,
+  pdfCropTop: 0,
+  pdfCropBottom: 0,
   panel: 'library',
   sleepMinutes: null,
   dictZhToEn: false,
@@ -105,6 +111,8 @@ export const useStore = create<AppState>((set) => ({
   setTheme: (patch) => set((s) => ({ theme: { ...s.theme, ...patch } })),
   setViewMode: (viewMode) => set({ viewMode }),
   setPdfPageGap: (pdfPageGap) => set({ pdfPageGap }),
+  setPdfCropTop: (pdfCropTop) => set({ pdfCropTop }),
+  setPdfCropBottom: (pdfCropBottom) => set({ pdfCropBottom }),
   setPanel: (panel) => set({ panel }),
   setSleep: (sleepMinutes) => set({ sleepMinutes }),
   setDictZhToEn: (dictZhToEn) => set({ dictZhToEn }),
@@ -118,6 +126,8 @@ export const useStore = create<AppState>((set) => ({
       theme: { ...defaultTheme },
       viewMode: 'scroll',
       pdfPageGap: 16,
+      pdfCropTop: 0,
+      pdfCropBottom: 0,
       sleepMinutes: null,
       showCaption: false
     })

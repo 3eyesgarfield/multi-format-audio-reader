@@ -420,24 +420,14 @@ input[type='text'],
 .sent[data-hl='pink'] {
   background: rgba(244, 143, 177, 0.5);
 }
-/* PDF: the text layer's boxes overlap, so semi-transparent highlights would stack
-   their alpha and darken at the seams. Use opaque colours blended with `darken`
-   (over the white page) so overlaps don't compound — like a real highlighter. */
-.pdf-textlayer span[data-hl],
-.pdf-textlayer span.active {
-  mix-blend-mode: darken;
-}
-.pdf-textlayer span[data-hl='yellow'] {
-  background: rgb(255, 226, 130);
-}
-.pdf-textlayer span[data-hl='green'] {
-  background: rgb(176, 224, 150);
-}
-.pdf-textlayer span[data-hl='pink'] {
-  background: rgb(246, 170, 196);
-}
-.pdf-textlayer span.active {
-  background: rgb(150, 200, 255) !important;
+/* PDF highlights are painted on a merged <canvas class="pdf-hl"> (see paintHost in
+   PdfReader): each colour is filled ONCE over all its boxes, so overlapping text
+   layer spans don't stack alpha (no darkening) and the glyph strokes keep their
+   weight. The span [data-hl]/.active attributes just drive that painting. */
+.pdf-hl {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
 }
 /* keep selected PDF text invisible (only the highlight band shows) so selecting
    doesn't reveal the sans-serif text-layer glyphs over the canvas */

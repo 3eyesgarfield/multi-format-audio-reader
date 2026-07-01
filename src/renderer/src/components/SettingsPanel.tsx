@@ -8,7 +8,7 @@ interface Props {
 
 export function SettingsPanel({ onExport }: Props): JSX.Element {
   const { t } = useTranslation()
-  const { voices, tts, setTts, theme, setTheme, health, sleepMinutes, setSleep, resetSettings, dictZhToEn, setDictZhToEn, showCaption, setShowCaption, viewMode, pdfPageGap, setPdfPageGap, enableKokoro, setEnableKokoro, lookupMode, setLookupMode } =
+  const { voices, tts, setTts, theme, setTheme, health, sleepMinutes, setSleep, resetSettings, dictZhToEn, setDictZhToEn, showCaption, setShowCaption, viewMode, pdfPageGap, setPdfPageGap, enableKokoro, setEnableKokoro, lookupMode, setLookupMode, book, pdfCropTop, setPdfCropTop, pdfCropBottom, setPdfCropBottom } =
     useStore()
 
   const zhVoices = voices.filter((v) => v.lang === 'zh')
@@ -180,6 +180,37 @@ export function SettingsPanel({ onExport }: Props): JSX.Element {
           onChange={(e) => setTheme({ lineHeight: Number(e.target.value) })}
         />
       </div>
+
+      {book?.format === 'pdf' && (
+        <>
+          <div className="set-group">
+            <span>
+              {t('cropTop')}: {Math.round(pdfCropTop * 100)}%
+            </span>
+            <input
+              type="range"
+              min={0}
+              max={0.2}
+              step={0.005}
+              value={pdfCropTop}
+              onChange={(e) => setPdfCropTop(Number(e.target.value))}
+            />
+          </div>
+          <div className="set-group">
+            <span>
+              {t('cropBottom')}: {Math.round(pdfCropBottom * 100)}%
+            </span>
+            <input
+              type="range"
+              min={0}
+              max={0.2}
+              step={0.005}
+              value={pdfCropBottom}
+              onChange={(e) => setPdfCropBottom(Number(e.target.value))}
+            />
+          </div>
+        </>
+      )}
 
       {viewMode === 'double' && (
         <div className="set-group">
